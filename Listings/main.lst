@@ -1,0 +1,405 @@
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Include) DEFINE(FOSC_160000) DE
+                    -BUG OBJECTEXTEND PRINT(.\Listings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "main.h"
+   2          #include "N76E003.h"
+   3          #include "SFR_Macro.h"
+   4          #include "Function_define.h"
+   5          #include "Common.h"
+   6          
+   7          #define RUN_MODE  0x01
+   8          #define STOP_MODE 0x02
+   9          #define CHILD_LOCK_STOP_MODE  0x04
+  10          #define CHARGE_MODE 0x08
+  11          
+  12          #define BT_NO_PRESS 0
+  13          #define BT_SHORT_PRESS  1
+  14          #define BT_LONG_PRESS   2
+  15          
+  16          void Timer0_Init();
+  17          float getVDD();
+  18          void set_MotorDuty(unsigned int value);
+  19          void RunMode();
+  20          void ChildLockMode();
+  21          void get_ButtonPress();
+  22          void Charging();
+  23          unsigned char u8DebounceTime, u8DebounceCount, u8ButtonState, u8TrimmerMode, u8ChargeMode;
+  24          volatile unsigned int u16Delay1ms, u16VddDelay;
+  25          unsigned char u8PowerUpMode;
+  26          void timer0_itCallback()  interrupt 1{
+  27   1        TH0 = 0xC1;
+  28   1        TL0 = 0x7F;
+  29   1        
+  30   1        if(u16Delay1ms){
+  31   2          u16Delay1ms--;
+  32   2        }
+  33   1        if(u8DebounceTime){
+  34   2          u8DebounceTime--;
+  35   2        }
+  36   1        if(u16VddDelay){
+  37   2          u16VddDelay--;
+  38   2        }
+  39   1      }
+  40          
+  41          unsigned int temp;
+  42          void PinIT(void) interrupt 7
+  43          {
+  44   1        clr_EPI;
+  45   1        PIF=0x00;
+  46   1        u8PowerUpMode=1;
+  47   1      //  u8ButtonState=BT_NO_PRESS;
+  48   1      //  u8TrimmerMode = STOP_MODE;
+  49   1      //  u8DebounceTime=0;
+  50   1      //  u8DebounceCount=0;
+  51   1      //  get_ButtonPress();
+  52   1      //  P12=1;
+  53   1      //  temp=100;
+  54   1      //  while(--temp){
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 2   
+
+  55   1      //    nop;
+  56   1      //    nop;
+  57   1      //  }
+  58   1      //  P12=0;
+  59   1      }
+  60          
+  61          
+  62          void set_PWM_period(unsigned int value)
+  63          {
+  64   1        PWMPL = (value & 0x00FF);
+  65   1        PWMPH = ((value & 0xFF00) >> 8); 
+  66   1      }
+  67          
+  68          
+  69            sfr PORDIS = 0xFD;
+  70          float Vdd,Duty;
+  71          void main(){
+  72   1        P00_PushPull_Mode;
+  73   1        P10_Input_Mode;
+  74   1        P12_PushPull_Mode;
+  75   1        P13_PushPull_Mode;
+  76   1        P14_PushPull_Mode;
+  77   1        P05_PushPull_Mode;
+  78   1        P03_Input_Mode;
+  79   1        P11_Input_Mode;
+  80   1      
+  81   1        SFRS = 0x00;
+  82   1        TA = 0xAA;
+  83   1        TA = 0x55;
+  84   1        PORDIS = 0x5A;
+  85   1        TA = 0xAA;
+  86   1        TA = 0x55;
+  87   1        PORDIS = 0xA5;
+  88   1        
+  89   1        Enable_BIT3_LowLevel_Trig;
+  90   1        Enable_BIT1_HighLevel_Trig;
+  91   1        Enable_INT_Port1;
+  92   1        Enable_INT_Port0;
+  93   1        PWM2_P05_OUTPUT_ENABLE;
+  94   1        PWM_IMDEPENDENT_MODE;
+  95   1        PWM_EDGE_TYPE;
+  96   1        set_CLRPWM;
+  97   1      //  PWM_CLOCK_FSYS;
+  98   1        PWM_CLOCK_DIV_32;
+  99   1      //  PWM1_OUTPUT_NORMAL;
+ 100   1        PWM2_OUTPUT_NORMAL;
+ 101   1        set_PWM_period(319);
+ 102   1        set_PWMRUN;
+ 103   1        u16Delay1ms=1000;
+ 104   1        set_EA;
+ 105   1        set_ADCEN;
+ 106   1        Timer0_Init();
+ 107   1        u8TrimmerMode=STOP_MODE;
+ 108   1        while(1){
+ 109   2            get_ButtonPress();
+ 110   2            if(!u8ChargeMode){
+ 111   3                if(u8TrimmerMode == RUN_MODE){
+ 112   4                    RunMode();
+ 113   4                }
+ 114   3                else if(u8TrimmerMode == STOP_MODE){
+ 115   4                    set_MotorDuty(0);
+ 116   4                    P13=0;
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 3   
+
+ 117   4                    P12=0;
+ 118   4                    P14=0;
+ 119   4                    clr_PWMRUN;
+ 120   4                    PWM2_P05_OUTPUT_DISABLE;
+ 121   4                  P05=0;
+ 122   4                    if(!u8PowerUpMode){
+ 123   5                      PIF=0x00;
+ 124   5                      set_EPI;
+ 125   5                      set_PD;
+ 126   5                    }
+ 127   4                }
+ 128   3                else if(u8TrimmerMode == CHILD_LOCK_STOP_MODE){
+ 129   4                  ChildLockMode();
+ 130   4                }         
+ 131   3            }
+ 132   2            else{
+ 133   3                if(u8TrimmerMode == RUN_MODE){
+ 134   4                    RunMode();
+ 135   4                }
+ 136   3                else if(u8TrimmerMode == STOP_MODE){
+ 137   4                    if(!u16Delay1ms){
+ 138   5                        u16Delay1ms=800;
+ 139   5                        Charging();
+ 140   5                    }
+ 141   4                }
+ 142   3                else if(u8TrimmerMode == CHILD_LOCK_STOP_MODE){
+ 143   4                    u8TrimmerMode=STOP_MODE;
+ 144   4                }
+ 145   3            }
+ 146   2          
+ 147   2      //      if(u8TrimmerMode == RUN_MODE){
+ 148   2      //        RunMode();
+ 149   2      //      }
+ 150   2      //      else if(u8TrimmerMode == STOP_MODE){
+ 151   2      //          set_MotorDuty(0);
+ 152   2      //          P13=0;
+ 153   2      //          P12=0;
+ 154   2      //          P14=0;
+ 155   2      //      }
+ 156   2      //      else if(u8TrimmerMode == CHILD_LOCK_STOP_MODE){
+ 157   2      //        ChildLockMode();
+ 158   2      //      }
+ 159   2        }
+ 160   1      }
+ 161          
+ 162          void get_ButtonPress(){
+ 163   1        if(u8DebounceTime==0){
+ 164   2          u8DebounceTime=10;
+ 165   2          
+ 166   2          P00=1;
+ 167   2          nop;nop;nop;nop;
+ 168   2          u8ChargeMode=!P10;
+ 169   2          P00=0;
+ 170   2          
+ 171   2          if(P03==0){
+ 172   3            if(u8DebounceCount<250)
+ 173   3              u8DebounceCount++;
+ 174   3            if(u8ButtonState !=BT_LONG_PRESS){
+ 175   4              if(u8DebounceCount>150){
+ 176   5                u8ButtonState=2;
+ 177   5              }
+ 178   4              else if(u8DebounceCount>20){
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 4   
+
+ 179   5                u8ButtonState=BT_SHORT_PRESS;
+ 180   5              }
+ 181   4              else{
+ 182   5                u8ButtonState=BT_NO_PRESS;
+ 183   5              }
+ 184   4              
+ 185   4              if(u8ButtonState==BT_LONG_PRESS){
+ 186   5                if(u8TrimmerMode==CHILD_LOCK_STOP_MODE){
+ 187   6                  u8TrimmerMode = RUN_MODE;
+ 188   6                  u16VddDelay=0;
+ 189   6                }
+ 190   5                else{
+ 191   6                  u8TrimmerMode=CHILD_LOCK_STOP_MODE;
+ 192   6                }
+ 193   5              }
+ 194   4            }
+ 195   3          }
+ 196   2          else{
+ 197   3            u8DebounceCount=0;
+ 198   3            if(u8ButtonState==BT_SHORT_PRESS){
+ 199   4              if(u8TrimmerMode == RUN_MODE){
+ 200   5                u8TrimmerMode = STOP_MODE;
+ 201   5                u8ButtonState=BT_NO_PRESS;
+ 202   5                set_MotorDuty(0);
+ 203   5                clr_PWMRUN;
+ 204   5                u8PowerUpMode=0;
+ 205   5              }
+ 206   4              else if(u8TrimmerMode == STOP_MODE){
+ 207   5                u8TrimmerMode = RUN_MODE;
+ 208   5                u16VddDelay=0;
+ 209   5                P12=0;P13=0;P14=0;
+ 210   5              }
+ 211   4            }
+ 212   3            u8ButtonState=BT_NO_PRESS;
+ 213   3          }
+ 214   2        }
+ 215   1      }
+ 216          
+ 217          void RunMode(){
+ 218   1        if(PWMRUN==0){
+ 219   2          PWMRUN=1;
+ 220   2          PWM2_P05_OUTPUT_ENABLE;
+ 221   2        }
+ 222   1        if(u8PowerUpMode==1){
+ 223   2          u8PowerUpMode=0;
+ 224   2        }
+ 225   1        if(u16Delay1ms==0){
+ 226   2          if(u16VddDelay==0 && P14==0){
+ 227   3            set_MotorDuty(0);
+ 228   3            nop;
+ 229   3            nop;
+ 230   3            Vdd=getVDD()-100;
+ 231   3            Duty=3100/Vdd;
+ 232   3            if(Duty>1){
+ 233   4                u8TrimmerMode = STOP_MODE;
+ 234   4                set_MotorDuty(0);
+ 235   4                clr_PWMRUN;
+ 236   4                u8PowerUpMode=0;
+ 237   4                return;
+ 238   4            }
+ 239   3            Duty*=320;
+ 240   3            set_MotorDuty((uint16_t)(Duty-1));
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 5   
+
+ 241   3            u16VddDelay=60000;
+ 242   3          }
+ 243   2      //    Vdd=getVDD()-300;
+ 244   2      //    Vdd= Vdd/3300;
+ 245   2      
+ 246   2          if(!u8ChargeMode){
+ 247   3            u16Delay1ms=1000;
+ 248   3            P12=0;
+ 249   3            P13=0;
+ 250   3          
+ 251   3            if(P14==0){
+ 252   4              if(Vdd>2500)
+ 253   4                P14=1;
+ 254   4              if(Vdd>3300)
+ 255   4                P13=1;
+ 256   4              if(Vdd>3900)
+ 257   4                P12=1;
+ 258   4            }
+ 259   3            else{
+ 260   4              P14=0;
+ 261   4              P13=0;
+ 262   4              P12=0;
+ 263   4            }
+ 264   3          }
+ 265   2          else{
+ 266   3            u16Delay1ms=800;
+ 267   3            Charging();
+ 268   3          }
+ 269   2        }
+ 270   1      }
+ 271          
+ 272          
+ 273          void ChildLockMode(){
+ 274   1        set_MotorDuty(0);
+ 275   1        if(u16Delay1ms==0){
+ 276   2            if(P13==0){
+ 277   3              u16Delay1ms=1000;
+ 278   3              P13=1;
+ 279   3              P12=1;
+ 280   3              P14=0;
+ 281   3            }
+ 282   2            else{
+ 283   3              u16Delay1ms=1500;
+ 284   3              P13=0;
+ 285   3              P12=0;
+ 286   3              P14=0;
+ 287   3            }
+ 288   2        }
+ 289   1      }
+ 290          
+ 291          void Charging(){
+ 292   1        if(P14==0){
+ 293   2          P14=1;
+ 294   2        }
+ 295   1        else if(P13==0){
+ 296   2          P13=1;
+ 297   2        }
+ 298   1        else if(P12==0){
+ 299   2          P12=1;
+ 300   2        }
+ 301   1        else{
+ 302   2          P12=0;
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 6   
+
+ 303   2          P13=0;
+ 304   2          P14=0;
+ 305   2        }
+ 306   1      }
+ 307          
+ 308          void Timer0_Init(){
+ 309   1        TIMER0_MODE1_ENABLE;
+ 310   1        CKCON = 0x08;
+ 311   1      //  TE0=1;
+ 312   1        IE|= 0x02;
+ 313   1        TH0 = 0xC1;
+ 314   1        TL0 = 0x7F;
+ 315   1        set_TR0;
+ 316   1      }
+ 317          
+ 318          double  Bandgap_Value, Bandgap_Voltage;
+ 319          void READ_BANDGAP(){
+ 320   1        unsigned char BandgapHigh, BandgapLow;
+ 321   1        set_IAPEN;
+ 322   1        IAPAL = 0x0C;
+ 323   1        IAPAH = 0x00;
+ 324   1        IAPCN = 0x04;
+ 325   1        set_IAPGO;
+ 326   1        BandgapHigh=IAPFD;
+ 327   1        IAPAL=0x0d;
+ 328   1        IAPAH=0x00;
+ 329   1        IAPCN=0x04;
+ 330   1        set_IAPGO;
+ 331   1        BandgapLow=IAPFD;
+ 332   1        BandgapLow=BandgapLow&0x0F;
+ 333   1        clr_IAPEN;  //Disable IAPEN
+ 334   1        Bandgap_Value=(BandgapHigh<<4)+BandgapLow;
+ 335   1        Bandgap_Voltage=3072/(0x1000/Bandgap_Value);
+ 336   1      }
+ 337          
+ 338          double VDD_Voltage;
+ 339          void ADC_Bypass(){
+ 340   1        unsigned char ozc;
+ 341   1        for(ozc=0;ozc<0x03;ozc++){
+ 342   2          clr_ADCF;
+ 343   2          set_ADCS;
+ 344   2          while(ADCF==0);
+ 345   2        }
+ 346   1      }
+ 347          
+ 348          float getVDD(){
+ 349   1        double bgvalue;
+ 350   1        READ_BANDGAP();
+ 351   1        Enable_ADC_BandGap;
+ 352   1        ADC_Bypass();
+ 353   1        u16Delay1ms=2;
+ 354   1        while(u16Delay1ms);
+ 355   1        clr_ADCF;
+ 356   1        set_ADCS;
+ 357   1        while(ADCF==0);
+ 358   1        bgvalue=(ADCRH<<4)+ADCRL;
+ 359   1        VDD_Voltage=Bandgap_Value*3072;//(0xfff/bgvalue)*Bandgap_Voltage;
+ 360   1        VDD_Voltage = VDD_Voltage/bgvalue;
+ 361   1        return VDD_Voltage;
+ 362   1      }
+ 363          
+ 364          void set_MotorDuty(unsigned int value)
+C51 COMPILER V9.60.0.0   MAIN                                                              03/01/2021 08:47:42 PAGE 7   
+
+ 365          {
+ 366   1        PWM2L = (value & 0x00FF);
+ 367   1        PWM2H = ((value & 0xFF00) >> 8);
+ 368   1        set_LOAD;
+ 369   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1250    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     32       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

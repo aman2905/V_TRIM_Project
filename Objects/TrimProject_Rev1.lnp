@@ -1,0 +1,5 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj" 
+TO ".\Objects\TrimProject_Rev1.0" 
+PRINT(".\Listings\TrimProject_Rev1.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 
